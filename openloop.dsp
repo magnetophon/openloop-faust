@@ -1,11 +1,8 @@
 //////////////// constants
-maxLength = 262144;
-//pow(2,18);
+maxLength = 262144; //pow(2,18);
+fadeLength = 4096;
 //////////////// UI control elements
 StartStop1 = button("../1"): startPulse;
-//The master clock of the circular buffer
-circularPointer = ( ((_+1)%maxLength) ~_);
-RecPointer = circularPointer*masterIsWrtiting;
 ////////////////some functions to use in controlling loop lengths
 sampleAndHold(hold) = select2((hold!=0):int) ~ _;
 FlipFlop(bit) = sampleAndHold(bit)~_==0 ;
@@ -15,27 +12,51 @@ startPulse= _ <: _, mem: - : >(0);
 stopPulse = (_==0):startPulse;
 round = _+0.5:floor;
 // the pointer displays
-pointer_displays(x,y) = y,x:pp_graph,rp_graph:cross(2);
 masterIsWriting = FlipFlop(StartStop1);
 //:hbargraph("../h:masterLoop/recording", 0, 1);
-//(_+1,masterLoopLenght : %) ~ _;
-masterLoopLenght   =
-select2(masterIsWriting | (timer(masterIsWriting)==1),
+//(_+1,masterLoopLength : %) ~ _;
+masterLoopLength   =
+select2(masterIsWriting | (timer(masterIsWriting)<2),
   timer(masterIsWriting):sampleAndHold(stopPulse(masterIsWriting):not),
-  maxLength );
-masterPosition = (((_+1)*not(startPulse(masterIsWriting)),masterLoopLenght) : %) ~ _;
+  maxLength )
+:min(maxLength):max(0)
+;
+masterPosition = ((_*not(startPulse(masterIsWriting)),masterLoopLength) : %) ~ (_+1);
 //-----------------------------------------------
-masterWritePointer  =  masterIsWriting * masterPosition ;
-masterReadPointer =  not(masterIsWriting) * masterPosition ;
+masterWriteIndex  =  masterIsWriting * masterPosition ;
+masterReadIndex =  not(masterIsWriting) * masterPosition ;
 //-----------------------------------------------
-masterControls = maxLength, 0.0 , masterWritePointer , _ , masterReadPointer;
+masterFadeInWriteIndex = masterWriteIndex@masterLoopLength;
+masterFadeInReadIndex = min(masterReadIndex,fadeLength);
+masterFadeOutWriteIndex = min(masterWriteIndex,fadeLength);
+masterFadeOutReadIndex = (masterReadIndex - masterLoopLength + fadeLength) :max(0);
+
 //-----------------------------------------------
-fadeIn = 0;
-fadeOut = 0;
-masterLoop = masterControls : rwtable;
+masterControls(x)        = maxLength  , 0.0 , masterWriteIndex        , x , masterReadIndex;
+masterFadeInControls(x)  = fadeLength , 0.0 , masterFadeInWriteIndex  , x , masterFadeInReadIndex;
+masterFadeOutControls(x) = fadeLength , 0.0 , masterFadeOutWriteIndex , x@fadeLength , masterFadeOutReadIndex;
 //-----------------------------------------------
-masterLooper = fadeIn + masterLoop + fadeOut;
+masterFadeIn(x)  = masterFadeInControls(x)  : rwtable * masterFadeInVolume
+with {
+  masterFadeInVolume = (fadeLength - min(masterReadIndex, fadeLength)) / fadeLength;
+};
+masterFadeOut(x) = masterFadeOutControls(x) : rwtable * masterFadeOutVolume
+with {
+  masterFadeOutVolume = (masterReadIndex - masterLoopLength + fadeLength) / fadeLength :max(0);
+};
+masterLoop(x)    = masterControls(x)        : rwtable * fadeVolume
+with {
+  fadeVolume = select3(
+    (masterReadIndex > fadeLength) + (masterReadIndex >  (masterLoopLength - fadeLength)),
+    masterReadIndex,
+    fadeLength,
+    masterLoopLength - masterReadIndex
+    )
+  /fadeLength;
+};
 //-----------------------------------------------
-stereoMasterLooper =  masterLooper, masterLooper;
-process = stereoMasterLooper;
+masterLooper(x) = masterFadeIn(x) + masterLoop(x) + masterFadeOut(x);
+//-----------------------------------------------
+stereoMasterLooper(x,y) =  masterLooper(x), masterLooper(y);
+process(x) = masterFadeOut(x) ;
 
