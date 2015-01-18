@@ -24,18 +24,22 @@ select2(masterIsWriting | (timer(masterIsWriting)<2),
 ;
 masterPosition = ((_*not(startPulse(masterIsWriting)),masterLoopLength) : %) ~ (_+1);
 //-----------------------------------------------
-masterWriteIndex  =  masterIsWriting * masterPosition ;
+masterWriteIndex  =  
+select2(masterIsWriting,
+  (maxLength  +1),
+  masterPosition
+);
 masterReadIndex =  not(masterIsWriting) * masterPosition:hbargraph("../h:masterLoop/play", 0, maxLength):int ;
 //-----------------------------------------------
-masterFadeInWriteIndex = (masterWriteIndex@masterLoopLength):min(fadeLength);
-masterFadeInReadIndex = min(masterReadIndex@masterLoopLength,fadeLength) * not(masterIsWriting);
-masterFadeOutWriteIndex = min(masterWriteIndex,fadeLength);
+masterFadeInWriteIndex = (masterWriteIndex@masterLoopLength):min(fadeLength + 1);
+masterFadeInReadIndex = min(masterReadIndex,fadeLength) * not(masterIsWriting);
+masterFadeOutWriteIndex = min(masterWriteIndex,(fadeLength + 1));
 masterFadeOutReadIndex = (masterReadIndex - masterLoopLength + fadeLength) :max(0) * not(masterIsWriting);
 
 //-----------------------------------------------
-masterControls(x)        = maxLength  , 0.0 , masterWriteIndex        , x , masterReadIndex;
-masterFadeInControls(x)  = fadeLength , 0.0 , masterFadeInWriteIndex  , x , masterFadeInReadIndex;
-masterFadeOutControls(x) = fadeLength , 0.0 , masterFadeOutWriteIndex , x@fadeLength , masterFadeOutReadIndex;
+masterControls(x)        = maxLength  +1, 0.0 , masterWriteIndex        , x , masterReadIndex;
+masterFadeInControls(x)  = fadeLength +1, 0.0 , masterFadeInWriteIndex  , x , masterFadeInReadIndex;
+masterFadeOutControls(x) = fadeLength +1, 0.0 , masterFadeOutWriteIndex , x@fadeLength , masterFadeOutReadIndex;
 //-----------------------------------------------
 masterFadeIn(x)  = masterFadeInControls(x)  : rwtable * masterFadeInVolume
 with {
@@ -45,9 +49,10 @@ masterFadeOut(x) = masterFadeOutControls(x) : rwtable * masterFadeOutVolume
 with {
   masterFadeOutVolume = (masterReadIndex - masterLoopLength + fadeLength) / fadeLength :max(0);
 };
-masterLoop(x)    = masterControls(x)        : rwtable //* fadeVolume
+masterLoop(x)    = masterControls(x)        : rwtable * fadeVolume
 with {
-  fadeVolume = select3(
+  fadeVolume = (masterLoopLength -  masterReadIndex - 1):min(fadeLength) / fadeLength :max(0);
+  fadeVolum = select3(
     (masterReadIndex > fadeLength) + (masterReadIndex >  (masterLoopLength - fadeLength)),
     masterReadIndex,
     fadeLength,
@@ -56,7 +61,8 @@ with {
   /fadeLength;
 };
 //-----------------------------------------------
-masterLooper(x) = masterFadeIn(x) + masterLoop(x) + masterFadeOut(x);
+masterLooper(x) = masterLoop(x) + masterFadeOut(x);
+//masterFadeIn(x) + 
 //-----------------------------------------------
 stereoMasterLooper(x,y) =  masterLooper(x), masterLooper(y);
 process =  stereoMasterLooper;
