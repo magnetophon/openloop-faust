@@ -1,6 +1,7 @@
 //////////////// constants
-maxLength = 262144; //pow(2,18);
-fadeLength = 4096;
+maxLength = 1048576;
+//262144; //pow(2,18);
+fadeLength = 16384;
 //////////////// UI control elements
 StartStop1 = button("../1"): startPulse;
 ////////////////some functions to use in controlling loop lengths
@@ -24,12 +25,12 @@ select2(masterIsWriting | (timer(masterIsWriting)<2),
 masterPosition = ((_*not(startPulse(masterIsWriting)),masterLoopLength) : %) ~ (_+1);
 //-----------------------------------------------
 masterWriteIndex  =  masterIsWriting * masterPosition ;
-masterReadIndex =  not(masterIsWriting) * masterPosition ;
+masterReadIndex =  not(masterIsWriting) * masterPosition:hbargraph("../h:masterLoop/play", 0, maxLength):int ;
 //-----------------------------------------------
-masterFadeInWriteIndex = masterWriteIndex@masterLoopLength;
-masterFadeInReadIndex = min(masterReadIndex,fadeLength);
+masterFadeInWriteIndex = (masterWriteIndex@masterLoopLength):min(fadeLength);
+masterFadeInReadIndex = min(masterReadIndex@masterLoopLength,fadeLength) * not(masterIsWriting);
 masterFadeOutWriteIndex = min(masterWriteIndex,fadeLength);
-masterFadeOutReadIndex = (masterReadIndex - masterLoopLength + fadeLength) :max(0);
+masterFadeOutReadIndex = (masterReadIndex - masterLoopLength + fadeLength) :max(0) * not(masterIsWriting);
 
 //-----------------------------------------------
 masterControls(x)        = maxLength  , 0.0 , masterWriteIndex        , x , masterReadIndex;
@@ -44,7 +45,7 @@ masterFadeOut(x) = masterFadeOutControls(x) : rwtable * masterFadeOutVolume
 with {
   masterFadeOutVolume = (masterReadIndex - masterLoopLength + fadeLength) / fadeLength :max(0);
 };
-masterLoop(x)    = masterControls(x)        : rwtable * fadeVolume
+masterLoop(x)    = masterControls(x)        : rwtable //* fadeVolume
 with {
   fadeVolume = select3(
     (masterReadIndex > fadeLength) + (masterReadIndex >  (masterLoopLength - fadeLength)),
@@ -58,5 +59,5 @@ with {
 masterLooper(x) = masterFadeIn(x) + masterLoop(x) + masterFadeOut(x);
 //-----------------------------------------------
 stereoMasterLooper(x,y) =  masterLooper(x), masterLooper(y);
-process(x) = masterFadeOut(x) ;
+process =  stereoMasterLooper;
 
